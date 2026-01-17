@@ -1,0 +1,148 @@
+.create-meeting-page {
+  min-height: 100vh;
+  padding: 20px 0;
+}
+
+.meeting-form {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.form-group {
+  margin-bottom: 1.5rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.form-group input[type="text"],
+.form-group input[type="datetime-local"],
+.form-group textarea {
+  width: 100%;
+  padding: 12px;
+  background-color: var(--bg-secondary);
+  border: 2px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 16px;
+  transition: border-color 0.3s;
+}
+
+.form-group input:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: var(--accent-green);
+}
+
+.form-group textarea {
+  resize: vertical;
+  min-height: 100px;
+}
+
+.map-info {
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin-bottom: 10px;
+}
+
+.map-container {
+  border: 2px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.selected-address {
+  padding: 10px;
+  background-color: var(--bg-secondary);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.selected-address strong {
+  color: var(--accent-green);
+}
+
+.checkbox-group label {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.checkbox-group input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  margin-right: 10px;
+  cursor: pointer;
+  accent-color: var(--accent-green);
+}
+
+.checkbox-group span {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.terms-link {
+  color: var(--accent-green);
+  text-decoration: underline;
+  transition: color 0.3s;
+}
+
+.terms-link:hover {
+  color: var(--accent-green-hover);
+}
+
+.error-message {
+  padding: 12px;
+  background-color: rgba(255, 68, 68, 0.1);
+  border: 2px solid var(--error-color);
+  border-radius: 8px;
+  color: var(--error-color);
+  margin-bottom: 1rem;
+}
+
+.submit-button {
+  width: 100%;
+  padding: 16px;
+  background-color: var(--accent-green);
+  color: var(--bg-primary);
+  border: none;
+  border-radius: 8px;
+  font-size: 18px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.submit-button:hover:not(:disabled) {
+  background-color: var(--accent-green-hover);
+}
+
+.submit-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+@media (max-width: 768px) {
+  .create-meeting-page {
+    padding: 10px 0;
+  }
+
+  .meeting-form {
+    padding: 0 10px;
+  }
+
+  .form-group input,
+  .form-group textarea {
+    font-size: 16px; /* Prevents zoom on iOS */
+  }
+
+  .map-container {
+    height: 250px;
+  }
+}
