@@ -1,0 +1,39 @@
+services:
+  backend:
+    image: ghcr.io/boogiedk/tygde-backend:latest
+    container_name: tygde-backend
+    restart: unless-stopped
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:80
+    volumes:
+      - tygde-data:/app/Data
+    networks:
+      - tygde-network
+    mem_limit: 256m
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/api/meetings/00000000-0000-0000-0000-000000000000", "||", "true"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  frontend:
+    image: ghcr.io/boogiedk/tygde-frontend:latest
+    container_name: tygde-frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:80"
+    depends_on:
+      - backend
+    networks:
+      - tygde-network
+    mem_limit: 64m
+
+volumes:
+  tygde-data:
+    driver: local
+
+networks:
+  tygde-network:
+    driver: bridge
