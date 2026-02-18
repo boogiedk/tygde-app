@@ -1,38 +1,228 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { YMaps, Map, Placemark, ZoomControl } from 'react-yandex-maps';
-import { Meeting } from '../types/meeting';
+import { MeetingFull, MeetingPreview, Participant } from '../types/meeting';
 import { API_ENDPOINTS, YANDEX_MAPS_API_KEY } from '../config/api';
+import { getParticipantToken, setParticipantToken, removeParticipantToken } from '../utils/cookies';
+import { openRouteToLocation } from '../utils/maps';
+import PinModal from '../components/PinModal';
+import ParticipantsList from '../components/ParticipantsList';
 import './ViewMeetingPage.css';
+
+type PageState = 'loading' | 'pin' | 'meeting' | 'error';
 
 const ViewMeetingPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const [meeting, setMeeting] = useState<Meeting | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [pageState, setPageState] = useState<PageState>('loading');
+  const [meeting, setMeeting] = useState<MeetingFull | null>(null);
+  const [preview, setPreview] = useState<MeetingPreview | null>(null);
+  const [participants, setParticipants] = useState<Participant[]>([]);
+  const [currentParticipantId, setCurrentParticipantId] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [pinLoading, setPinLoading] = useState(false);
+  const participantsIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const locationIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Обновление геолокации
+  const updateLocation = useCallback(async () => {
+    if (!id) return;
+    const token = getParticipantToken(id);
+    if (!token) return;
+
+    try {
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 30000,
+        });
+      });
+
+      await fetch(API_ENDPOINTS.UPDATE_LOCATION(id), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token,
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        }),
+      });
+    } catch {
+      // Геолокация недоступна — не критично
+    }
+  }, [id]);
+
+  // Загрузка списка участников
+  const fetchParticipants = useCallback(async () => {
+    if (!id) return;
+    try {
+      const response = await fetch(API_ENDPOINTS.PARTICIPANTS(id));
+      if (response.ok) {
+        const data = await response.json();
+        setParticipants(data);
+      }
+    } catch {
+      // Тихая ошибка
+    }
+  }, [id]);
+
+  // Запуск интервалов после входа на встречу
+  const startPolling = useCallback(() => {
+    // Поллинг участников каждые 10 секунд
+    if (participantsIntervalRef.current) clearInterval(participantsIntervalRef.current);
+    participantsIntervalRef.current = setInterval(fetchParticipants, 10000);
+
+    // Обновление геолокации при входе + каждые 30 секунд
+    updateLocation();
+    if (locationIntervalRef.current) clearInterval(locationIntervalRef.current);
+    locationIntervalRef.current = setInterval(updateLocation, 30000);
+  }, [fetchParticipants, updateLocation]);
+
+  // Очистка интервалов
   useEffect(() => {
-    const fetchMeeting = async () => {
+    return () => {
+      if (participantsIntervalRef.current) clearInterval(participantsIntervalRef.current);
+      if (locationIntervalRef.current) clearInterval(locationIntervalRef.current);
+    };
+  }, []);
+
+  // Инициализация: проверяем cookie → verify → или показываем PIN
+  useEffect(() => {
+    const initialize = async () => {
       if (!id) return;
 
-      try {
-        const response = await fetch(API_ENDPOINTS.GET_MEETING(id));
+      const token = getParticipantToken(id);
 
+      if (token) {
+        // Есть токен — проверяем
+        try {
+          const response = await fetch(API_ENDPOINTS.VERIFY_TOKEN(id), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token }),
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            setMeeting(data.meeting);
+            setParticipants(data.meeting.participants);
+            setCurrentParticipantId(data.participant.id);
+            setPageState('meeting');
+            return;
+          }
+        } catch {
+          // Токен невалидный — удаляем
+        }
+        removeParticipantToken(id);
+      }
+
+      // Нет валидного токена — загружаем превью и показываем PIN
+      try {
+        const response = await fetch(API_ENDPOINTS.MEETING_PREVIEW(id));
         if (!response.ok) {
           throw new Error('Встреча не найдена');
         }
-
         const data = await response.json();
-        setMeeting(data);
+        setPreview(data);
+        setPageState('pin');
       } catch (err: any) {
         setError(err.message || 'Ошибка при загрузке встречи');
-      } finally {
-        setLoading(false);
+        setPageState('error');
       }
     };
 
-    fetchMeeting();
+    initialize();
   }, [id]);
+
+  // Запуск поллинга когда вошли на встречу
+  useEffect(() => {
+    if (pageState === 'meeting') {
+      startPolling();
+    }
+  }, [pageState, startPolling]);
+
+  // Вход по PIN
+  const handlePinSubmit = async (pin: string) => {
+    if (!id) return;
+    setPinLoading(true);
+    setPinError(null);
+
+    try {
+      // Получаем геолокацию для входа
+      let lat: number | undefined;
+      let lng: number | undefined;
+      try {
+        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
+        });
+        lat = position.coords.latitude;
+        lng = position.coords.longitude;
+      } catch {
+        // Не критично
+      }
+
+      const response = await fetch(API_ENDPOINTS.JOIN_MEETING(id), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin, latitude: lat, longitude: lng }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Неверный PIN-код');
+      }
+
+      const data = await response.json();
+      setParticipantToken(id, data.token);
+      setMeeting(data.meeting);
+      setParticipants(data.meeting.participants);
+      setCurrentParticipantId(data.participant.id);
+      setPageState('meeting');
+    } catch (err: any) {
+      setPinError(err.message || 'Ошибка при входе');
+    } finally {
+      setPinLoading(false);
+    }
+  };
+
+  // Покинуть встречу
+  const handleLeave = async () => {
+    if (!id) return;
+    const token = getParticipantToken(id);
+    if (!token) return;
+
+    try {
+      await fetch(API_ENDPOINTS.LEAVE_MEETING(id), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+      });
+    } catch {
+      // Тихая ошибка
+    }
+
+    removeParticipantToken(id);
+    setCurrentParticipantId(null);
+    setMeeting(null);
+
+    // Перезагружаем превью и показываем PIN
+    try {
+      const response = await fetch(API_ENDPOINTS.MEETING_PREVIEW(id));
+      if (response.ok) {
+        const data = await response.json();
+        setPreview(data);
+      }
+    } catch {
+      // Тихая ошибка
+    }
+
+    // Останавливаем интервалы
+    if (participantsIntervalRef.current) clearInterval(participantsIntervalRef.current);
+    if (locationIntervalRef.current) clearInterval(locationIntervalRef.current);
+
+    setPageState('pin');
+  };
 
   const formatDateTime = (dateTimeString: string) => {
     const date = new Date(dateTimeString);
@@ -47,41 +237,11 @@ const ViewMeetingPage: React.FC = () => {
 
   const handleBuildRoute = () => {
     if (!meeting) return;
-
-    const { latitude, longitude } = meeting.location;
-
-    // Получаем текущую геопозицию пользователя
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          // Успешно получили координаты
-          const userLat = position.coords.latitude;
-          const userLon = position.coords.longitude;
-          // Открываем Яндекс.Карты с маршрутом от текущей позиции до точки встречи
-          const url = `https://yandex.ru/maps/?rtext=${userLat},${userLon}~${latitude},${longitude}&rtt=auto`;
-          window.open(url, '_blank');
-        },
-        (error) => {
-          // Ошибка получения геопозиции (пользователь отклонил или недоступно)
-          console.error('Ошибка получения геопозиции:', error);
-          // Открываем без точки старта (Яндекс попросит разрешение сам)
-          const url = `https://yandex.ru/maps/?rtext=~${latitude},${longitude}&rtt=auto`;
-          window.open(url, '_blank');
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 5000,
-          maximumAge: 0
-        }
-      );
-    } else {
-      // Geolocation API не поддерживается
-      const url = `https://yandex.ru/maps/?rtext=~${latitude},${longitude}&rtt=auto`;
-      window.open(url, '_blank');
-    }
+    openRouteToLocation(meeting.location.latitude, meeting.location.longitude);
   };
 
-  if (loading) {
+  // Состояние: загрузка
+  if (pageState === 'loading') {
     return (
       <div className="view-meeting-page">
         <div className="container">
@@ -91,7 +251,8 @@ const ViewMeetingPage: React.FC = () => {
     );
   }
 
-  if (error || !meeting) {
+  // Состояние: ошибка
+  if (pageState === 'error') {
     return (
       <div className="view-meeting-page">
         <div className="container">
@@ -103,6 +264,21 @@ const ViewMeetingPage: React.FC = () => {
       </div>
     );
   }
+
+  // Состояние: PIN-модальное окно
+  if (pageState === 'pin') {
+    return (
+      <PinModal
+        meetingTitle={preview?.title || 'Встреча'}
+        onSubmit={handlePinSubmit}
+        isLoading={pinLoading}
+        error={pinError}
+      />
+    );
+  }
+
+  // Состояние: встреча
+  if (!meeting) return null;
 
   const coordinates: [number, number] = [meeting.location.latitude, meeting.location.longitude];
 
@@ -135,6 +311,12 @@ const ViewMeetingPage: React.FC = () => {
             🗺️ Проложить маршрут
           </button>
 
+          <ParticipantsList
+            participants={participants}
+            currentParticipantId={currentParticipantId}
+            onLeave={handleLeave}
+          />
+
           <div className="map-section">
             <h3>Место встречи</h3>
             <div className="map-container">
@@ -159,7 +341,7 @@ const ViewMeetingPage: React.FC = () => {
           <div className="share-section">
             <h3>Поделиться встречей</h3>
             <p className="share-text">
-              Отправьте эту ссылку участникам встречи:
+              Отправьте эту ссылку и PIN-код участникам встречи:
             </p>
             <div className="share-link">
               <input

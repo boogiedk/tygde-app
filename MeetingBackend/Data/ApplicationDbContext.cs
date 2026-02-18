@@ -11,6 +11,7 @@ public class ApplicationDbContext : DbContext
     }
 
     public DbSet<Meeting> Meetings { get; set; } = null!;
+    public DbSet<Participant> Participants { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -27,6 +28,22 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Latitude).IsRequired();
             entity.Property(e => e.Longitude).IsRequired();
             entity.Property(e => e.CreatedAt).IsRequired();
+            entity.Property(e => e.PinHash).IsRequired().HasMaxLength(64);
+        });
+
+        modelBuilder.Entity<Participant>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.DisplayName).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Color).IsRequired().HasMaxLength(7);
+            entity.Property(e => e.JoinedAt).IsRequired();
+            entity.Property(e => e.IsActive).IsRequired();
+
+            entity.HasOne(e => e.Meeting)
+                .WithMany(m => m.Participants)
+                .HasForeignKey(e => e.MeetingId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

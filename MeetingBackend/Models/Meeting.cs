@@ -28,4 +28,10 @@ public class Meeting
     public string Address { get; set; } = string.Empty;
     
     public DateTime CreatedAt { get; set; }
+
+    [Required]
+    [MaxLength(64)]
+    public string PinHash { get; set; } = string.Empty;
+
+    public ICollection<Participant> Participants { get; set; } = new List<Participant>();
 }

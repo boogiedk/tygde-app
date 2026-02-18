@@ -14,6 +14,9 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 
 // Register repositories and services
 builder.Services.AddScoped<IMeetingRepository, MeetingRepository>();
+builder.Services.AddScoped<IParticipantRepository, ParticipantRepository>();
+builder.Services.AddScoped<ParticipantService>();
+builder.Services.AddScoped<IParticipantService>(sp => sp.GetRequiredService<ParticipantService>());
 builder.Services.AddScoped<IMeetingService, MeetingService>();
 
 // Configure CORS

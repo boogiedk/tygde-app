@@ -1,0 +1,75 @@
+import React from 'react';
+import { Participant } from '../types/meeting';
+import { openParticipantLocation } from '../utils/maps';
+import './ParticipantsList.css';
+
+interface ParticipantsListProps {
+  participants: Participant[];
+  currentParticipantId: string | null;
+  onLeave: () => void;
+}
+
+const ParticipantsList: React.FC<ParticipantsListProps> = ({
+  participants,
+  currentParticipantId,
+  onLeave,
+}) => {
+  const activeParticipants = participants.filter(p => p.isActive);
+
+  const handleLocationClick = (participant: Participant) => {
+    if (participant.latitude != null && participant.longitude != null) {
+      openParticipantLocation(participant.latitude, participant.longitude);
+    }
+  };
+
+  return (
+    <div className="participants-section">
+      <div className="participants-header">
+        <h3 className="participants-title">Участники</h3>
+        <span className="participants-count">
+          {activeParticipants.length}
+        </span>
+      </div>
+
+      <ul className="participants-list">
+        {activeParticipants.map(participant => {
+          const isYou = participant.id === currentParticipantId;
+          const hasLocation = participant.latitude != null && participant.longitude != null;
+
+          return (
+            <li key={participant.id} className="participant-item">
+              <div
+                className="participant-color"
+                style={{ backgroundColor: participant.color }}
+              />
+              <div className="participant-info">
+                <div className="participant-name">
+                  {participant.displayName}
+                </div>
+                <div className={`participant-status ${isYou ? 'is-you' : ''}`}>
+                  {isYou ? 'Это вы' : ''}
+                </div>
+              </div>
+              <button
+                className="participant-location-button"
+                onClick={() => handleLocationClick(participant)}
+                disabled={!hasLocation}
+                title={hasLocation ? 'Открыть на карте' : 'Местоположение недоступно'}
+              >
+                📍 Где?
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+
+      {currentParticipantId && (
+        <button className="leave-button" onClick={onLeave}>
+          Покинуть встречу
+        </button>
+      )}
+    </div>
+  );
+};
+
+export default ParticipantsList;

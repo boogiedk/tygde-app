@@ -1,0 +1,153 @@
+.participants-section {
+  background-color: var(--bg-secondary);
+  border: 2px solid var(--border-color);
+  border-radius: 12px;
+  padding: 2rem;
+  margin-bottom: 2rem;
+}
+
+.participants-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.participants-title {
+  font-size: 1.5rem;
+  color: var(--text-primary);
+  margin-bottom: 0;
+}
+
+.participants-count {
+  font-size: 14px;
+  color: var(--text-secondary);
+  background-color: var(--bg-primary);
+  padding: 4px 12px;
+  border-radius: 12px;
+}
+
+.participants-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.participant-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.participant-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.participant-item:first-child {
+  padding-top: 0;
+}
+
+.participant-color {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-right: 12px;
+}
+
+.participant-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.participant-name {
+  font-size: 16px;
+  color: var(--text-primary);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.participant-status {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.participant-status.is-you {
+  color: var(--accent-green);
+}
+
+.participant-location-button {
+  padding: 8px 14px;
+  background-color: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.3s;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
+.participant-location-button:hover {
+  border-color: var(--accent-green);
+  color: var(--accent-green);
+}
+
+.participant-location-button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.participant-location-button:disabled:hover {
+  border-color: var(--border-color);
+  color: var(--text-secondary);
+}
+
+.leave-button {
+  width: 100%;
+  padding: 14px;
+  background-color: transparent;
+  border: 2px solid var(--error-color);
+  border-radius: 12px;
+  color: var(--error-color);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+  margin-top: 1.5rem;
+}
+
+.leave-button:hover {
+  background-color: rgba(255, 68, 68, 0.1);
+}
+
+@media (max-width: 768px) {
+  .participants-section {
+    padding: 1.5rem;
+  }
+
+  .participants-title {
+    font-size: 1.2rem;
+  }
+
+  .participant-color {
+    width: 30px;
+    height: 30px;
+  }
+
+  .participant-name {
+    font-size: 14px;
+  }
+
+  .participant-location-button {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+}

@@ -4,6 +4,6 @@ namespace MeetingBackend.Services;
 
 public interface IMeetingService
 {
-    Task<MeetingResponse> CreateMeetingAsync(CreateMeetingRequest request);
+    Task<CreateMeetingResponse> CreateMeetingAsync(CreateMeetingRequest request);
     Task<MeetingResponse?> GetMeetingByIdAsync(Guid id);
 }

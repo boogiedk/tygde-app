@@ -68,6 +68,52 @@
   color: var(--accent-green);
 }
 
+.pin-field {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.pin-field input {
+  width: 120px;
+  text-align: center;
+  font-size: 24px !important;
+  font-weight: 700;
+  letter-spacing: 8px;
+  padding: 12px;
+  background-color: var(--bg-secondary);
+  border: 2px solid var(--border-color);
+  border-radius: 8px;
+  color: var(--accent-green);
+  transition: border-color 0.3s;
+}
+
+.pin-field input:focus {
+  outline: none;
+  border-color: var(--accent-green);
+}
+
+.generate-pin-button {
+  padding: 10px 16px;
+  background-color: var(--bg-secondary);
+  border: 2px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 20px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.generate-pin-button:hover {
+  border-color: var(--accent-green);
+  transform: scale(1.1);
+}
+
+.pin-hint {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin-top: 8px;
+}
+
 .checkbox-group label {
   display: flex;
   align-items: center;

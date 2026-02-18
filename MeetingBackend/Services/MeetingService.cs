@@ -7,13 +7,15 @@ namespace MeetingBackend.Services;
 public class MeetingService : IMeetingService
 {
     private readonly IMeetingRepository _repository;
+    private readonly ParticipantService _participantService;
 
-    public MeetingService(IMeetingRepository repository)
+    public MeetingService(IMeetingRepository repository, ParticipantService participantService)
     {
         _repository = repository;
+        _participantService = participantService;
     }
 
-    public async Task<MeetingResponse> CreateMeetingAsync(CreateMeetingRequest request)
+    public async Task<CreateMeetingResponse> CreateMeetingAsync(CreateMeetingRequest request)
     {
         // Валидация
         if (string.IsNullOrWhiteSpace(request.Title))
@@ -22,11 +24,14 @@ public class MeetingService : IMeetingService
         if (request.DateTime == default)
             throw new ArgumentException("Укажите дату и время встречи");
 
-        if (request.Location == null || 
+        if (request.Location == null ||
             string.IsNullOrWhiteSpace(request.Location.Address))
             throw new ArgumentException("Укажите место встречи");
 
-        // Создание сущности
+        if (string.IsNullOrWhiteSpace(request.Pin) || request.Pin.Length != 4 || !request.Pin.All(char.IsDigit))
+            throw new ArgumentException("PIN должен содержать ровно 4 цифры");
+
+        // Создание встречи
         var meeting = new Meeting
         {
             Id = Guid.NewGuid(),
@@ -36,12 +41,57 @@ public class MeetingService : IMeetingService
             Latitude = request.Location.Latitude,
             Longitude = request.Location.Longitude,
             Address = request.Location.Address,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            PinHash = ParticipantService.HashPin(request.Pin)
         };
 
         var created = await _repository.CreateMeetingAsync(meeting);
 
-        return MapToResponse(created);
+        // Auto-join создателя
+        var participant = await _participantService.CreateParticipantAsync(
+            created.Id, request.Latitude, request.Longitude);
+
+        return new CreateMeetingResponse
+        {
+            Meeting = new MeetingFullResponse
+            {
+                Id = created.Id,
+                Title = created.Title,
+                Description = created.Description,
+                DateTime = created.DateTime,
+                Location = new LocationDto
+                {
+                    Latitude = created.Latitude,
+                    Longitude = created.Longitude,
+                    Address = created.Address
+                },
+                CreatedAt = created.CreatedAt,
+                Participants = new List<ParticipantResponse>
+                {
+                    new()
+                    {
+                        Id = participant.Id,
+                        DisplayName = participant.DisplayName,
+                        Color = participant.Color,
+                        Latitude = participant.Latitude,
+                        Longitude = participant.Longitude,
+                        JoinedAt = participant.JoinedAt,
+                        IsActive = participant.IsActive
+                    }
+                }
+            },
+            Participant = new ParticipantResponse
+            {
+                Id = participant.Id,
+                DisplayName = participant.DisplayName,
+                Color = participant.Color,
+                Latitude = participant.Latitude,
+                Longitude = participant.Longitude,
+                JoinedAt = participant.JoinedAt,
+                IsActive = participant.IsActive
+            },
+            Token = participant.Id.ToString()
+        };
     }
 
     public async Task<MeetingResponse?> GetMeetingByIdAsync(Guid id)

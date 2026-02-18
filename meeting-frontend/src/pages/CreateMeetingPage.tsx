@@ -3,7 +3,12 @@ import { YMaps, Map, Placemark, GeolocationControl, ZoomControl } from 'react-ya
 import { useNavigate, Link } from 'react-router-dom';
 import { CreateMeetingRequest } from '../types/meeting';
 import { API_ENDPOINTS, YANDEX_MAPS_API_KEY } from '../config/api';
+import { setParticipantToken } from '../utils/cookies';
 import './CreateMeetingPage.css';
+
+const generatePin = (): string => {
+  return Math.floor(1000 + Math.random() * 9000).toString();
+};
 
 const CreateMeetingPage: React.FC = () => {
   const navigate = useNavigate();
@@ -11,13 +16,13 @@ const CreateMeetingPage: React.FC = () => {
     title: '',
     description: '',
     dateTime: '',
+    pin: generatePin(),
   });
   const [coordinates, setCoordinates] = useState<[number, number]>([55.751244, 37.618423]);
   const [address, setAddress] = useState('');
   const [acceptPolicy, setAcceptPolicy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [mapInstance, setMapInstance] = useState<any>(null);
 
   const handleMapClick = async (e: any) => {
     const coords = e.get('coords');
@@ -64,9 +69,27 @@ const CreateMeetingPage: React.FC = () => {
       return;
     }
 
+    if (!formData.pin || !/^\d{4}$/.test(formData.pin)) {
+      setError('PIN-код должен содержать ровно 4 цифры');
+      return;
+    }
+
     setLoading(true);
 
     try {
+      // Получаем геолокацию создателя
+      let creatorLat: number | undefined;
+      let creatorLng: number | undefined;
+      try {
+        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
+        });
+        creatorLat = position.coords.latitude;
+        creatorLng = position.coords.longitude;
+      } catch {
+        // Геолокация недоступна — не критично
+      }
+
       const request: CreateMeetingRequest = {
         title: formData.title,
         description: formData.description || undefined,
@@ -76,6 +99,9 @@ const CreateMeetingPage: React.FC = () => {
           longitude: coordinates[1],
           address: address,
         },
+        pin: formData.pin,
+        latitude: creatorLat,
+        longitude: creatorLng,
       };
 
       const response = await fetch(API_ENDPOINTS.CREATE_MEETING, {
@@ -91,8 +117,10 @@ const CreateMeetingPage: React.FC = () => {
         throw new Error(errorData.error || 'Ошибка при создании встречи');
       }
 
-      const meeting = await response.json();
-      navigate(`/meeting/${meeting.id}`);
+      const data = await response.json();
+      // Сохраняем токен участника в cookie
+      setParticipantToken(data.meeting.id, data.token);
+      navigate(`/meeting/${data.meeting.id}`);
     } catch (err: any) {
       setError(err.message || 'Ошибка при создании встречи');
     } finally {
@@ -152,7 +180,6 @@ const CreateMeetingPage: React.FC = () => {
                   width="100%"
                   height="300px"
                   onClick={handleMapClick}
-                  instanceRef={(ref) => setMapInstance(ref)}
                   modules={['geocode']}
                   options={{
                     suppressMapOpenBlock: true,
@@ -169,6 +196,36 @@ const CreateMeetingPage: React.FC = () => {
                 <strong>Выбранный адрес:</strong> {address}
               </div>
             )}
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="pin">PIN-код для входа *</label>
+            <div className="pin-field">
+              <input
+                type="text"
+                id="pin"
+                inputMode="numeric"
+                maxLength={4}
+                value={formData.pin}
+                onChange={(e) => {
+                  const value = e.target.value.replace(/\D/g, '').slice(0, 4);
+                  setFormData({ ...formData, pin: value });
+                }}
+                placeholder="4 цифры"
+                required
+              />
+              <button
+                type="button"
+                className="generate-pin-button"
+                onClick={() => setFormData({ ...formData, pin: generatePin() })}
+                title="Сгенерировать новый PIN"
+              >
+                🎲
+              </button>
+            </div>
+            <div className="pin-hint">
+              Этот PIN-код понадобится участникам для входа на встречу
+            </div>
           </div>
 
           <div className="form-group checkbox-group">
