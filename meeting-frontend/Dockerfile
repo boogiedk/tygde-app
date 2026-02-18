@@ -15,7 +15,7 @@ ENV REACT_APP_YANDEX_MAPS_KEY=$REACT_APP_YANDEX_MAPS_KEY
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci --only=production
+RUN npm ci --legacy-peer-deps
 
 # Copy source code
 COPY . .
