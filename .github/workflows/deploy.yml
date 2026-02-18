@@ -78,7 +78,7 @@ jobs:
             ${{ env.IMAGE_PREFIX }}-frontend:latest
             ${{ env.IMAGE_PREFIX }}-frontend:${{ github.sha }}
           build-args: |
-            REACT_APP_API_URL=/api
+            REACT_APP_API_URL=
             REACT_APP_YANDEX_MAPS_KEY=${{ secrets.YANDEX_MAPS_KEY }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
