@@ -314,6 +314,7 @@ const ViewMeetingPage: React.FC = () => {
           <ParticipantsList
             participants={participants}
             currentParticipantId={currentParticipantId}
+            meetingLocation={meeting.location}
             onLeave={handleLeave}
           />
 

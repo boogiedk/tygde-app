@@ -1,24 +1,31 @@
 import React from 'react';
-import { Participant } from '../types/meeting';
-import { openParticipantLocation } from '../utils/maps';
+import { Participant, Location } from '../types/meeting';
+import { openRouteFromTo } from '../utils/maps';
 import './ParticipantsList.css';
 
 interface ParticipantsListProps {
   participants: Participant[];
   currentParticipantId: string | null;
+  meetingLocation: Location;
   onLeave: () => void;
 }
 
 const ParticipantsList: React.FC<ParticipantsListProps> = ({
   participants,
   currentParticipantId,
+  meetingLocation,
   onLeave,
 }) => {
   const activeParticipants = participants.filter(p => p.isActive);
 
   const handleLocationClick = (participant: Participant) => {
     if (participant.latitude != null && participant.longitude != null) {
-      openParticipantLocation(participant.latitude, participant.longitude);
+      openRouteFromTo(
+        participant.latitude,
+        participant.longitude,
+        meetingLocation.latitude,
+        meetingLocation.longitude
+      );
     }
   };
 
