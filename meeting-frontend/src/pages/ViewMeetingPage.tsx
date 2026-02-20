@@ -21,6 +21,8 @@ const ViewMeetingPage: React.FC = () => {
   const [error, setError] = useState('');
   const [pinError, setPinError] = useState<string | null>(null);
   const [pinLoading, setPinLoading] = useState(false);
+  const [resolvedAddress, setResolvedAddress] = useState<string | null>(null);
+  const ymapsRef = useRef<any>(null);
   const participantsIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const locationIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -68,13 +70,16 @@ const ViewMeetingPage: React.FC = () => {
   }, [id]);
 
   // Запуск интервалов после входа на встречу
-  const startPolling = useCallback(() => {
+  const startPolling = useCallback(async () => {
+    // Обновление геолокации при входе, затем загрузка участников
+    await updateLocation();
+    await fetchParticipants();
+
     // Поллинг участников каждые 10 секунд
     if (participantsIntervalRef.current) clearInterval(participantsIntervalRef.current);
     participantsIntervalRef.current = setInterval(fetchParticipants, 10000);
 
-    // Обновление геолокации при входе + каждые 30 секунд
-    updateLocation();
+    // Обновление геолокации каждые 30 секунд
     if (locationIntervalRef.current) clearInterval(locationIntervalRef.current);
     locationIntervalRef.current = setInterval(updateLocation, 30000);
   }, [fetchParticipants, updateLocation]);
@@ -235,6 +240,47 @@ const ViewMeetingPage: React.FC = () => {
     }).format(date);
   };
 
+  // Проверяем, выглядит ли адрес как координаты (например "55.764796, 37.600914")
+  const isCoordinateAddress = (addr: string) => /^\d+\.\d+,\s*\d+\.\d+$/.test(addr.trim());
+
+  // Сохраняем ссылку на ymaps API при загрузке
+  const handleYmapsLoad = useCallback((ymaps: any) => {
+    ymapsRef.current = ymaps;
+  }, []);
+
+  // Обратное геокодирование — запускается когда и ymaps загружен, и meeting есть
+  useEffect(() => {
+    if (!meeting || !isCoordinateAddress(meeting.location.address)) return;
+
+    const tryGeocode = () => {
+      const ymaps = ymapsRef.current;
+      if (!ymaps) return;
+
+      ymaps.geocode([meeting.location.latitude, meeting.location.longitude])
+        .then((result: any) => {
+          const firstGeoObject = result.geoObjects.get(0);
+          if (firstGeoObject) {
+            setResolvedAddress(firstGeoObject.getAddressLine());
+          }
+        })
+        .catch(() => { /* не критично */ });
+    };
+
+    // Пробуем сразу (ymaps мог уже загрузиться)
+    if (ymapsRef.current) {
+      tryGeocode();
+    } else {
+      // Если ymaps ещё не загружен, ждём с интервалом
+      const interval = setInterval(() => {
+        if (ymapsRef.current) {
+          clearInterval(interval);
+          tryGeocode();
+        }
+      }, 500);
+      return () => clearInterval(interval);
+    }
+  }, [meeting]);
+
   const handleBuildRoute = () => {
     if (!meeting) return;
     openRouteToLocation(meeting.location.latitude, meeting.location.longitude);
@@ -277,10 +323,34 @@ const ViewMeetingPage: React.FC = () => {
     );
   }
 
+  // Участники с известными координатами (для отображения на карте)
+  const participantsWithLocation = participants.filter(
+    p => p.isActive && p.latitude != null && p.longitude != null
+  );
+
   // Состояние: встреча
   if (!meeting) return null;
 
   const coordinates: [number, number] = [meeting.location.latitude, meeting.location.longitude];
+
+  // Вычисляем границы карты: точка встречи + все участники с координатами
+  const allPoints: [number, number][] = [coordinates];
+  participantsWithLocation.forEach(p => {
+    allPoints.push([p.latitude!, p.longitude!]);
+  });
+
+  // Рассчитываем bounds для автоподстройки зума
+  const getBounds = (): [[number, number], [number, number]] | null => {
+    if (allPoints.length <= 1) return null;
+    const lats = allPoints.map(p => p[0]);
+    const lngs = allPoints.map(p => p[1]);
+    return [
+      [Math.min(...lats) - 0.002, Math.min(...lngs) - 0.002],
+      [Math.max(...lats) + 0.002, Math.max(...lngs) + 0.002],
+    ];
+  };
+
+  const mapBounds = getBounds();
 
   return (
     <div className="view-meeting-page">
@@ -296,7 +366,7 @@ const ViewMeetingPage: React.FC = () => {
 
             <div className="info-item">
               <span className="info-label">📍 Адрес:</span>
-              <span className="info-value">{meeting.location.address}</span>
+              <span className="info-value">{resolvedAddress || meeting.location.address}</span>
             </div>
 
             {meeting.description && (
@@ -311,33 +381,76 @@ const ViewMeetingPage: React.FC = () => {
             🗺️ Проложить маршрут
           </button>
 
+          <div className="map-section">
+            <h3>Место встречи</h3>
+            <div className="map-container">
+              <YMaps query={{ apikey: YANDEX_MAPS_API_KEY, lang: 'ru_RU', load: 'package.full' }} onLoad={handleYmapsLoad}>
+                <Map
+                  defaultState={{ center: coordinates, zoom: 15 }}
+                  state={mapBounds ? { bounds: mapBounds } : undefined}
+                  width="100%"
+                  height="400px"
+                  modules={['geoObject.addon.balloon', 'geoObject.addon.hint']}
+                >
+                  {/* Маркер точки встречи */}
+                  <Placemark
+                    geometry={coordinates}
+                    options={{
+                      preset: 'islands#greenCircleDotIcon',
+                    }}
+                    properties={{
+                      hintContent: 'Точка встречи',
+                      balloonContent: resolvedAddress || meeting.location.address,
+                    }}
+                  />
+
+                  {/* Маркеры участников */}
+                  {participantsWithLocation.map(participant => (
+                    <Placemark
+                      key={participant.id}
+                      geometry={[participant.latitude!, participant.longitude!]}
+                      options={{
+                        preset: 'islands#circleDotIcon',
+                        iconColor: participant.color,
+                      }}
+                      properties={{
+                        hintContent: participant.displayName,
+                        balloonContent: participant.displayName +
+                          (participant.id === currentParticipantId ? ' (вы)' : ''),
+                      }}
+                    />
+                  ))}
+
+                  <ZoomControl options={{ float: 'right' }} />
+                </Map>
+              </YMaps>
+            </div>
+            {participantsWithLocation.length > 0 && (
+              <div className="map-legend">
+                <span className="legend-item">
+                  <span className="legend-dot legend-dot--meeting"></span>
+                  Точка встречи
+                </span>
+                {participantsWithLocation.map(p => (
+                  <span key={p.id} className="legend-item">
+                    <span
+                      className="legend-dot"
+                      style={{ backgroundColor: p.color }}
+                    ></span>
+                    {p.displayName}
+                    {p.id === currentParticipantId ? ' (вы)' : ''}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
           <ParticipantsList
             participants={participants}
             currentParticipantId={currentParticipantId}
             meetingLocation={meeting.location}
             onLeave={handleLeave}
           />
-
-          <div className="map-section">
-            <h3>Место встречи</h3>
-            <div className="map-container">
-              <YMaps query={{ apikey: YANDEX_MAPS_API_KEY, lang: 'ru_RU' }}>
-                <Map
-                  defaultState={{ center: coordinates, zoom: 15 }}
-                  width="100%"
-                  height="400px"
-                >
-                  <Placemark
-                    geometry={coordinates}
-                    options={{
-                      preset: 'islands#greenDotIcon',
-                    }}
-                  />
-                  <ZoomControl options={{ float: 'right' }} />
-                </Map>
-              </YMaps>
-            </div>
-          </div>
 
           <div className="share-section">
             <h3>Поделиться встречей</h3>

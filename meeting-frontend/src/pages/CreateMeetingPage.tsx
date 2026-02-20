@@ -23,15 +23,20 @@ const CreateMeetingPage: React.FC = () => {
   const [acceptPolicy, setAcceptPolicy] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const ymapsRef = React.useRef<any>(null);
+
+  const handleYmapsLoad = (ymaps: any) => {
+    ymapsRef.current = ymaps;
+  };
 
   const handleMapClick = async (e: any) => {
     const coords = e.get('coords');
     setCoordinates(coords);
 
-    // Используем глобальный объект ymaps
-    if (window.ymaps) {
+    const ymaps = ymapsRef.current;
+    if (ymaps) {
       try {
-        const geoObjects = await window.ymaps.geocode(coords);
+        const geoObjects = await ymaps.geocode(coords);
         const firstGeoObject = geoObjects.geoObjects.get(0);
         const newAddress = firstGeoObject.getAddressLine();
         setAddress(newAddress);
@@ -40,7 +45,6 @@ const CreateMeetingPage: React.FC = () => {
         setAddress('Адрес не определен');
       }
     } else {
-      // Если геокодирование недоступно, просто показываем координаты
       setAddress(`${coords[0].toFixed(6)}, ${coords[1].toFixed(6)}`);
     }
   };
@@ -174,7 +178,7 @@ const CreateMeetingPage: React.FC = () => {
               Кликните на карту, чтобы выбрать место встречи
             </div>
             <div className="map-container">
-              <YMaps query={{ apikey: YANDEX_MAPS_API_KEY, lang: 'ru_RU' }}>
+              <YMaps query={{ apikey: YANDEX_MAPS_API_KEY, lang: 'ru_RU', load: 'package.full' }} onLoad={handleYmapsLoad}>
                 <Map
                   state={{ center: coordinates, zoom: 12 }}
                   width="100%"

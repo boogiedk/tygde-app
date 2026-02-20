@@ -1,0 +1,60 @@
+.header {
+  background-color: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.header-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.header-logo {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--accent-green);
+  text-decoration: none;
+  letter-spacing: -0.5px;
+}
+
+.header-logo:hover {
+  color: var(--accent-green-hover);
+}
+
+.header-new-meeting {
+  padding: 8px 16px;
+  background-color: transparent;
+  color: var(--accent-green);
+  border: 1.5px solid var(--accent-green);
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.header-new-meeting:hover {
+  background-color: var(--accent-green);
+  color: var(--bg-primary);
+}
+
+@media (max-width: 768px) {
+  .header-container {
+    padding: 10px 15px;
+  }
+
+  .header-logo {
+    font-size: 1.2rem;
+  }
+
+  .header-new-meeting {
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+}

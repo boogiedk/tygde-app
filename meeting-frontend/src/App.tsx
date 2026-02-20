@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import Header from './components/Header';
 import CreateMeetingPage from './pages/CreateMeetingPage';
 import ViewMeetingPage from './pages/ViewMeetingPage';
 import TermsPage from './pages/TermsPage';
@@ -9,6 +10,7 @@ function App() {
   return (
     <Router>
       <div className="App">
+        <Header />
         <Routes>
           <Route path="/" element={<CreateMeetingPage />} />
           <Route path="/meeting/:id" element={<ViewMeetingPage />} />

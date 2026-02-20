@@ -174,6 +174,104 @@
   cursor: not-allowed;
 }
 
+/* Модалка после создания встречи */
+.created-modal {
+  max-width: 500px;
+  margin: 60px auto;
+  text-align: center;
+}
+
+.created-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.created-modal h2 {
+  font-size: 2rem;
+  color: var(--accent-green);
+  margin-bottom: 8px;
+}
+
+.created-subtitle {
+  color: var(--text-secondary);
+  font-size: 16px;
+  margin-bottom: 2rem;
+}
+
+.invite-box {
+  background-color: var(--bg-secondary);
+  border: 2px solid var(--border-color);
+  border-radius: 12px;
+  padding: 20px 24px;
+  margin-bottom: 1.5rem;
+  text-align: left;
+}
+
+.invite-line {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 12px;
+}
+
+.invite-line:last-child {
+  margin-bottom: 0;
+}
+
+.invite-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.invite-value {
+  font-size: 16px;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.invite-pin {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--accent-green);
+  letter-spacing: 6px;
+}
+
+.copy-invite-button {
+  width: 100%;
+  padding: 16px;
+  background-color: var(--accent-green);
+  color: var(--bg-primary);
+  border: none;
+  border-radius: 12px;
+  font-size: 18px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  margin-bottom: 12px;
+}
+
+.copy-invite-button:hover {
+  background-color: var(--accent-green-hover);
+}
+
+.go-to-meeting-button {
+  width: 100%;
+  padding: 14px;
+  background-color: transparent;
+  color: var(--text-secondary);
+  border: 1.5px solid var(--border-color);
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.go-to-meeting-button:hover {
+  border-color: var(--accent-green);
+  color: var(--text-primary);
+}
+
 @media (max-width: 768px) {
   .create-meeting-page {
     padding: 10px 0;
