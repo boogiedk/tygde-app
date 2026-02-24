@@ -66,3 +66,11 @@ export interface VerifyTokenResponse {
   participant: Participant;
   meeting: MeetingFull;
 }
+
+export type LocationMode = 'auto' | 'manual';
+export type LocationSource = 'gps' | 'ip' | 'manual' | 'none';
+
+export interface ParticipantEta {
+  durationMinutes: number;
+  distanceKm: number;
+}

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Participant, Location } from '../types/meeting';
+import { Participant, Location, ParticipantEta } from '../types/meeting';
 import { openRouteFromTo } from '../utils/maps';
 import './ParticipantsList.css';
 
@@ -8,6 +8,7 @@ interface ParticipantsListProps {
   currentParticipantId: string | null;
   meetingLocation: Location;
   onLeave: () => void;
+  participantEtas?: Record<string, ParticipantEta>;
 }
 
 const ParticipantsList: React.FC<ParticipantsListProps> = ({
@@ -15,6 +16,7 @@ const ParticipantsList: React.FC<ParticipantsListProps> = ({
   currentParticipantId,
   meetingLocation,
   onLeave,
+  participantEtas = {},
 }) => {
   const activeParticipants = participants.filter(p => p.isActive);
 
@@ -43,6 +45,8 @@ const ParticipantsList: React.FC<ParticipantsListProps> = ({
           const isYou = participant.id === currentParticipantId;
           const hasLocation = participant.latitude != null && participant.longitude != null;
 
+          const eta = participantEtas[participant.id];
+
           return (
             <li key={participant.id} className="participant-item">
               <div
@@ -56,6 +60,11 @@ const ParticipantsList: React.FC<ParticipantsListProps> = ({
                 <div className={`participant-status ${isYou ? 'is-you' : ''}`}>
                   {isYou ? 'Это вы' : ''}
                 </div>
+                {eta && (
+                  <div className="participant-eta">
+                    ~{eta.durationMinutes} мин ({eta.distanceKm} км)
+                  </div>
+                )}
               </div>
               <button
                 className="participant-location-button"

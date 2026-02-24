@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { YMaps, Map, Placemark, ZoomControl } from 'react-yandex-maps';
-import { MeetingFull, MeetingPreview, Participant } from '../types/meeting';
+import { MeetingFull, MeetingPreview, Participant, LocationMode, LocationSource, ParticipantEta } from '../types/meeting';
 import { API_ENDPOINTS, YANDEX_MAPS_API_KEY } from '../config/api';
 import { getParticipantToken, setParticipantToken, removeParticipantToken } from '../utils/cookies';
 import { openRouteToLocation } from '../utils/maps';
+import { getLocationWithFallback } from '../utils/geolocation';
 import PinModal from '../components/PinModal';
 import ParticipantsList from '../components/ParticipantsList';
 import './ViewMeetingPage.css';
@@ -22,38 +23,51 @@ const ViewMeetingPage: React.FC = () => {
   const [pinError, setPinError] = useState<string | null>(null);
   const [pinLoading, setPinLoading] = useState(false);
   const [resolvedAddress, setResolvedAddress] = useState<string | null>(null);
+  const [locationMode, setLocationMode] = useState<LocationMode>('auto');
+  const [locationSource, setLocationSource] = useState<LocationSource>('none');
+  const [myLocation, setMyLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [showManualPrompt, setShowManualPrompt] = useState(false);
+  const [participantEtas, setParticipantEtas] = useState<Record<string, ParticipantEta>>({});
   const ymapsRef = useRef<any>(null);
   const participantsIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const locationIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Обновление геолокации
-  const updateLocation = useCallback(async () => {
+  // Отправка координат на сервер
+  const sendLocation = useCallback(async (lat: number, lng: number) => {
     if (!id) return;
     const token = getParticipantToken(id);
     if (!token) return;
 
     try {
-      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 30000,
-        });
-      });
-
       await fetch(API_ENDPOINTS.UPDATE_LOCATION(id), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token,
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        }),
+        body: JSON.stringify({ token, latitude: lat, longitude: lng }),
       });
+    } catch {
+      // Тихая ошибка
+    }
+  }, [id]);
+
+  // Обновление геолокации (автоматический режим)
+  const updateLocation = useCallback(async () => {
+    if (!id) return;
+    const token = getParticipantToken(id);
+    if (!token) return;
+    if (locationMode === 'manual') return;
+
+    try {
+      const geoResult = await getLocationWithFallback(10000);
+      if (!geoResult) return;
+
+      setMyLocation({ lat: geoResult.latitude, lng: geoResult.longitude });
+      setLocationSource(geoResult.source);
+
+      await sendLocation(geoResult.latitude, geoResult.longitude);
     } catch {
       // Геолокация недоступна — не критично
     }
-  }, [id]);
+  }, [id, locationMode, sendLocation]);
 
   // Загрузка списка участников
   const fetchParticipants = useCallback(async () => {
@@ -71,18 +85,12 @@ const ViewMeetingPage: React.FC = () => {
 
   // Запуск интервалов после входа на встречу
   const startPolling = useCallback(async () => {
-    // Обновление геолокации при входе, затем загрузка участников
-    await updateLocation();
     await fetchParticipants();
 
     // Поллинг участников каждые 10 секунд
     if (participantsIntervalRef.current) clearInterval(participantsIntervalRef.current);
     participantsIntervalRef.current = setInterval(fetchParticipants, 10000);
-
-    // Обновление геолокации каждые 30 секунд
-    if (locationIntervalRef.current) clearInterval(locationIntervalRef.current);
-    locationIntervalRef.current = setInterval(updateLocation, 30000);
-  }, [fetchParticipants, updateLocation]);
+  }, [fetchParticipants]);
 
   // Очистка интервалов
   useEffect(() => {
@@ -113,6 +121,10 @@ const ViewMeetingPage: React.FC = () => {
             setMeeting(data.meeting);
             setParticipants(data.meeting.participants);
             setCurrentParticipantId(data.participant.id);
+            // Восстановить позицию из данных участника
+            if (data.participant.latitude != null && data.participant.longitude != null) {
+              setMyLocation({ lat: data.participant.latitude, lng: data.participant.longitude });
+            }
             setPageState('meeting');
             return;
           }
@@ -140,12 +152,28 @@ const ViewMeetingPage: React.FC = () => {
     initialize();
   }, [id]);
 
-  // Запуск поллинга когда вошли на встречу
+  // Запуск поллинга участников когда вошли на встречу
   useEffect(() => {
     if (pageState === 'meeting') {
       startPolling();
     }
   }, [pageState, startPolling]);
+
+  // Управление поллингом геолокации (зависит от locationMode)
+  useEffect(() => {
+    if (pageState !== 'meeting') return;
+
+    if (locationIntervalRef.current) clearInterval(locationIntervalRef.current);
+
+    if (locationMode === 'auto') {
+      updateLocation();
+      locationIntervalRef.current = setInterval(updateLocation, 30000);
+    }
+
+    return () => {
+      if (locationIntervalRef.current) clearInterval(locationIntervalRef.current);
+    };
+  }, [locationMode, pageState, updateLocation]);
 
   // Вход по PIN
   const handlePinSubmit = async (pin: string) => {
@@ -154,17 +182,23 @@ const ViewMeetingPage: React.FC = () => {
     setPinError(null);
 
     try {
-      // Получаем геолокацию для входа
+      // Получаем геолокацию через цепочку фоллбэков: GPS → IP
+      const geoResult = await getLocationWithFallback(5000);
+
       let lat: number | undefined;
       let lng: number | undefined;
-      try {
-        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
-        });
-        lat = position.coords.latitude;
-        lng = position.coords.longitude;
-      } catch {
-        // Не критично
+
+      if (geoResult) {
+        lat = geoResult.latitude;
+        lng = geoResult.longitude;
+        setMyLocation({ lat: geoResult.latitude, lng: geoResult.longitude });
+        setLocationSource(geoResult.source);
+        // IP-геолокация неточная — сразу ручной режим, чтобы пользователь уточнил
+        setLocationMode(geoResult.source === 'ip' ? 'manual' : 'auto');
+      } else {
+        setShowManualPrompt(true);
+        setLocationSource('none');
+        setLocationMode('manual');
       }
 
       const response = await fetch(API_ENDPOINTS.JOIN_MEETING(id), {
@@ -281,10 +315,71 @@ const ViewMeetingPage: React.FC = () => {
     }
   }, [meeting]);
 
+  // Расчёт ETA для всех участников с координатами (пешком)
+  useEffect(() => {
+    if (!meeting || pageState !== 'meeting') return;
+
+    const ymaps = ymapsRef.current;
+    if (!ymaps) return;
+
+    const dest: [number, number] = [meeting.location.latitude, meeting.location.longitude];
+
+    // Собираем участников для расчёта: другие + текущий (из myLocation)
+    const toCalculate: { id: string; coords: [number, number] }[] = [];
+
+    participants.forEach(p => {
+      if (!p.isActive) return;
+      if (p.id === currentParticipantId) {
+        if (myLocation) {
+          toCalculate.push({ id: p.id, coords: [myLocation.lat, myLocation.lng] });
+        }
+      } else if (p.latitude != null && p.longitude != null) {
+        toCalculate.push({ id: p.id, coords: [p.latitude, p.longitude] });
+      }
+    });
+
+    if (toCalculate.length === 0) return;
+
+    const newEtas: Record<string, ParticipantEta> = {};
+    let completed = 0;
+
+    toCalculate.forEach(({ id: pId, coords }) => {
+      ymaps.route([coords, dest], { routingMode: 'pedestrian' })
+        .then((route: any) => {
+          const durationSec = route.getTime();
+          const distanceM = route.getLength();
+          newEtas[pId] = {
+            durationMinutes: Math.round(durationSec / 60),
+            distanceKm: Math.round(distanceM / 100) / 10, // округление до 0.1 км
+          };
+        })
+        .catch(() => {
+          // Не удалось рассчитать маршрут — пропускаем
+        })
+        .finally(() => {
+          completed++;
+          if (completed === toCalculate.length) {
+            setParticipantEtas(prev => ({ ...prev, ...newEtas }));
+          }
+        });
+    });
+  }, [meeting, participants, myLocation, currentParticipantId, pageState]);
+
   const handleBuildRoute = () => {
     if (!meeting) return;
     openRouteToLocation(meeting.location.latitude, meeting.location.longitude);
   };
+
+  // Клик по карте — установка/перемещение своего маркера
+  const handleMapClickForLocation = useCallback((e: any) => {
+    if (!currentParticipantId) return;
+    const coords = e.get('coords') as [number, number];
+    setMyLocation({ lat: coords[0], lng: coords[1] });
+    setLocationMode('manual');
+    setLocationSource('manual');
+    setShowManualPrompt(false);
+    sendLocation(coords[0], coords[1]);
+  }, [currentParticipantId, sendLocation]);
 
   // Состояние: загрузка
   if (pageState === 'loading') {
@@ -323,19 +418,23 @@ const ViewMeetingPage: React.FC = () => {
     );
   }
 
-  // Участники с известными координатами (для отображения на карте)
-  const participantsWithLocation = participants.filter(
-    p => p.isActive && p.latitude != null && p.longitude != null
+  // Участники с известными координатами (для отображения на карте), кроме текущего
+  const otherParticipantsWithLocation = participants.filter(
+    p => p.isActive && p.latitude != null && p.longitude != null && p.id !== currentParticipantId
   );
+  const currentParticipant = participants.find(p => p.id === currentParticipantId);
 
   // Состояние: встреча
   if (!meeting) return null;
 
   const coordinates: [number, number] = [meeting.location.latitude, meeting.location.longitude];
 
-  // Вычисляем границы карты: точка встречи + все участники с координатами
+  // Вычисляем границы карты: точка встречи + свой маркер + остальные участники
   const allPoints: [number, number][] = [coordinates];
-  participantsWithLocation.forEach(p => {
+  if (myLocation) {
+    allPoints.push([myLocation.lat, myLocation.lng]);
+  }
+  otherParticipantsWithLocation.forEach(p => {
     allPoints.push([p.latitude!, p.longitude!]);
   });
 
@@ -391,6 +490,7 @@ const ViewMeetingPage: React.FC = () => {
                   width="100%"
                   height="400px"
                   modules={['geoObject.addon.balloon', 'geoObject.addon.hint']}
+                  onClick={handleMapClickForLocation}
                 >
                   {/* Маркер точки встречи */}
                   <Placemark
@@ -404,8 +504,8 @@ const ViewMeetingPage: React.FC = () => {
                     }}
                   />
 
-                  {/* Маркеры участников */}
-                  {participantsWithLocation.map(participant => (
+                  {/* Маркеры других участников */}
+                  {otherParticipantsWithLocation.map(participant => (
                     <Placemark
                       key={participant.id}
                       geometry={[participant.latitude!, participant.longitude!]}
@@ -415,41 +515,116 @@ const ViewMeetingPage: React.FC = () => {
                       }}
                       properties={{
                         hintContent: participant.displayName,
-                        balloonContent: participant.displayName +
-                          (participant.id === currentParticipantId ? ' (вы)' : ''),
+                        balloonContent: participant.displayName,
                       }}
                     />
                   ))}
+
+                  {/* Маркер текущего пользователя — перетаскиваемый */}
+                  {myLocation && currentParticipant && (
+                    <Placemark
+                      geometry={[myLocation.lat, myLocation.lng]}
+                      options={{
+                        preset: 'islands#circleDotIcon',
+                        iconColor: currentParticipant.color,
+                        draggable: true,
+                      }}
+                      properties={{
+                        hintContent: `${currentParticipant.displayName} (вы) — перетащите для изменения`,
+                        balloonContent: `${currentParticipant.displayName} (вы)`,
+                      }}
+                      onDragEnd={(e: any) => {
+                        const newCoords = e.get('target').geometry.getCoordinates();
+                        setMyLocation({ lat: newCoords[0], lng: newCoords[1] });
+                        setLocationMode('manual');
+                        setLocationSource('manual');
+                        sendLocation(newCoords[0], newCoords[1]);
+                      }}
+                    />
+                  )}
 
                   <ZoomControl options={{ float: 'right' }} />
                 </Map>
               </YMaps>
             </div>
-            {participantsWithLocation.length > 0 && (
+            {(otherParticipantsWithLocation.length > 0 || myLocation) && (
               <div className="map-legend">
                 <span className="legend-item">
                   <span className="legend-dot legend-dot--meeting"></span>
                   Точка встречи
                 </span>
-                {participantsWithLocation.map(p => (
+                {myLocation && currentParticipant && (
+                  <span className="legend-item">
+                    <span
+                      className="legend-dot"
+                      style={{ backgroundColor: currentParticipant.color }}
+                    ></span>
+                    {currentParticipant.displayName} (вы)
+                  </span>
+                )}
+                {otherParticipantsWithLocation.map(p => (
                   <span key={p.id} className="legend-item">
                     <span
                       className="legend-dot"
                       style={{ backgroundColor: p.color }}
                     ></span>
                     {p.displayName}
-                    {p.id === currentParticipantId ? ' (вы)' : ''}
                   </span>
                 ))}
               </div>
             )}
           </div>
 
+          {/* Блок управления геолокацией */}
+          {currentParticipantId && (
+            <div className="location-control">
+              <div className="location-status">
+                <span className="location-status-icon">
+                  {locationSource === 'gps' && '\u{1F4E1}'}
+                  {locationSource === 'ip' && '\u{1F310}'}
+                  {locationSource === 'manual' && '\u{1F4CC}'}
+                  {locationSource === 'none' && '\u2753'}
+                </span>
+                <span className="location-status-text">
+                  {locationSource === 'gps' && 'Местоположение по GPS'}
+                  {locationSource === 'ip' && 'Примерное местоположение по IP'}
+                  {locationSource === 'manual' && 'Местоположение указано вручную'}
+                  {locationSource === 'none' && 'Местоположение не определено'}
+                </span>
+              </div>
+
+              {showManualPrompt && (
+                <div className="location-manual-prompt">
+                  Нажмите на карту, чтобы указать своё местоположение
+                </div>
+              )}
+
+              {locationSource === 'ip' && (
+                <div className="location-ip-hint">
+                  Местоположение определено приблизительно. Нажмите на карту или перетащите маркер для уточнения.
+                </div>
+              )}
+
+              {locationMode === 'manual' && locationSource !== 'none' && (
+                <button
+                  className="location-auto-button"
+                  onClick={() => {
+                    setLocationMode('auto');
+                    setShowManualPrompt(false);
+                  }}
+                >
+                  Вернуть автоопределение
+                </button>
+              )}
+            </div>
+          )}
+
           <ParticipantsList
             participants={participants}
             currentParticipantId={currentParticipantId}
             meetingLocation={meeting.location}
             onLeave={handleLeave}
+            participantEtas={participantEtas}
           />
 
           <div className="share-section">

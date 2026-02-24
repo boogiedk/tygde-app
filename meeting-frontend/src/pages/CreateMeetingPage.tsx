@@ -29,23 +29,40 @@ const CreateMeetingPage: React.FC = () => {
     ymapsRef.current = ymaps;
   };
 
+  const geocodeCoords = async (coords: [number, number]) => {
+    const ymaps = ymapsRef.current;
+    if (!ymaps) return;
+    try {
+      const geoObjects = await ymaps.geocode(coords);
+      const firstGeoObject = geoObjects.geoObjects.get(0);
+      if (firstGeoObject) {
+        setAddress(firstGeoObject.getAddressLine());
+      }
+    } catch {
+      setAddress('Адрес не определён');
+    }
+  };
+
   const handleMapClick = async (e: any) => {
-    const coords = e.get('coords');
+    const coords = e.get('coords') as [number, number];
     setCoordinates(coords);
 
-    const ymaps = ymapsRef.current;
-    if (ymaps) {
-      try {
-        const geoObjects = await ymaps.geocode(coords);
-        const firstGeoObject = geoObjects.geoObjects.get(0);
-        const newAddress = firstGeoObject.getAddressLine();
-        setAddress(newAddress);
-      } catch (err) {
-        console.error('Ошибка геокодирования:', err);
-        setAddress('Адрес не определен');
-      }
+    if (ymapsRef.current) {
+      await geocodeCoords(coords);
     } else {
-      setAddress(`${coords[0].toFixed(6)}, ${coords[1].toFixed(6)}`);
+      // ymaps ещё не загружен — показываем временный текст и ждём
+      setAddress('Определяем адрес...');
+      const interval = setInterval(async () => {
+        if (ymapsRef.current) {
+          clearInterval(interval);
+          await geocodeCoords(coords);
+        }
+      }, 300);
+      // Таймаут: если ymaps так и не загрузится за 5 секунд
+      setTimeout(() => {
+        clearInterval(interval);
+        setAddress(prev => prev === 'Определяем адрес...' ? 'Адрес не определён' : prev);
+      }, 5000);
     }
   };
 

@@ -1,5 +1,11 @@
 .App {
   min-height: 100vh;
   background-color: var(--bg-primary);
+  display: flex;
+  flex-direction: column;
+}
+
+.main-content {
+  flex: 1;
 }
 
